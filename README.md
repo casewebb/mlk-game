@@ -50,6 +50,12 @@ npm run build
 
 Deploy the `dist/` folder to GitHub Pages. Multiplayer uses PeerJS Cloud for signaling — no backend required.
 
+## Live game
+
+After enabling GitHub Pages (Settings → Pages → Source: **GitHub Actions**), the game is at:
+
+**https://casewebb.github.io/mlk-game/**
+
 ## Project Structure
 
 ```

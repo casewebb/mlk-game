@@ -70,4 +70,17 @@ export class AudioManager {
   playVote(): void {
     this.playTone(330, 0.2, 'sine', 0.1);
   }
+
+  playShoot(): void {
+    this.playTone(880, 0.06, 'square', 0.08);
+    setTimeout(() => this.playTone(220, 0.08, 'sawtooth', 0.06), 30);
+  }
+
+  playHit(): void {
+    this.playTone(150, 0.2, 'sawtooth', 0.1);
+  }
+
+  playStunned(): void {
+    this.playTone(90, 0.5, 'triangle', 0.12);
+  }
 }

@@ -7,7 +7,13 @@ export interface SessionPlayer {
   isHost: boolean;
   heldObjectId: string | null;
   scale: number;
+  /** Host game-time when stun ends (0 = not stunned) */
+  stunnedUntil: number;
 }
+
+export const STUN_DURATION = 30;
+export const SHOOT_RANGE = 45;
+export const SHOOT_COOLDOWN = 0.55;
 
 export interface FragmentState {
   id: string;

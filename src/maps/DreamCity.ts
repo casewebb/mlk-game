@@ -1,4 +1,24 @@
 import * as THREE from 'three';
+import {
+  createAlleyBuilding,
+  createChurch,
+  createConstructionSite,
+  createGroceryStore,
+  createMonumentPlatform,
+  createParkTree,
+  createPerimeterWall,
+  createRoadMarkings,
+  createSchool,
+  createShop,
+  createSidewalkStrip,
+  createStreetLamp,
+  createTunnelEntrance,
+} from './BuildingFactory.ts';
+import {
+  createHumanCharacter,
+  createPlayerNameTag,
+  PLAYER_EYE_HEIGHT,
+} from '../client/rendering/CharacterModel.ts';
 
 export interface DreamCityResult {
   group: THREE.Group;
@@ -9,87 +29,85 @@ export interface DreamCityResult {
   lights: THREE.Light[];
 }
 
-const WALL_COLOR = 0x8b7ec8;
-const FLOOR_COLOR = 0x4a6741;
-const ACCENT_COLOR = 0xff6b9d;
 export const SKY_COLOR = 0x1a1a2e;
-
-function createBox(
-  w: number, h: number, d: number, color: number,
-  x: number, y: number, z: number,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.85 }),
-  );
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-function createBuilding(w: number, h: number, d: number, color: number, x: number, z: number): THREE.Mesh {
-  return createBox(w, h, d, color, x, h / 2, z);
-}
+const FLOOR_COLOR = 0x4a6741;
+const STREET_COLOR = 0x3d3d3d;
 
 export function buildDreamCity(): DreamCityResult {
   const group = new THREE.Group();
   const lights: THREE.Light[] = [];
 
-  const floor = new THREE.Mesh(
+  // Ground layers
+  const grass = new THREE.Mesh(
     new THREE.PlaneGeometry(80, 80),
-    new THREE.MeshStandardMaterial({ color: FLOOR_COLOR, roughness: 0.9 }),
+    new THREE.MeshStandardMaterial({ color: FLOOR_COLOR, roughness: 0.95 }),
   );
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  group.add(floor);
+  grass.rotation.x = -Math.PI / 2;
+  grass.receiveShadow = true;
+  group.add(grass);
 
+  const street = new THREE.Mesh(
+    new THREE.PlaneGeometry(10, 80),
+    new THREE.MeshStandardMaterial({ color: STREET_COLOR, roughness: 0.88 }),
+  );
+  street.rotation.x = -Math.PI / 2;
+  street.position.y = 0.01;
+  street.receiveShadow = true;
+  group.add(street);
+
+  group.add(createRoadMarkings());
+  group.add(createSidewalkStrip(-7, 0, 2, 78));
+  group.add(createSidewalkStrip(7, 0, 2, 78));
+
+  // Perimeter
   const wallH = 6;
-  group.add(createBox(80, wallH, 1, WALL_COLOR, 0, wallH / 2, -40));
-  group.add(createBox(80, wallH, 1, WALL_COLOR, 0, wallH / 2, 40));
-  group.add(createBox(1, wallH, 80, WALL_COLOR, -40, wallH / 2, 0));
-  group.add(createBox(1, wallH, 80, WALL_COLOR, 40, wallH / 2, 0));
+  group.add(createPerimeterWall(80, wallH, 'z', -40));
+  group.add(createPerimeterWall(80, wallH, 'z', 40));
+  group.add(createPerimeterWall(80, wallH, 'x', -40));
+  group.add(createPerimeterWall(80, wallH, 'x', 40));
 
-  // Main street buildings
-  group.add(createBuilding(8, 6, 6, 0x6bcb77, -20, -15)); // Grocery
-  group.add(createBuilding(10, 8, 8, 0x74b9ff, 20, -15)); // School
-  group.add(createBuilding(6, 10, 6, 0xe17055, -20, 15)); // Church
-  group.add(createBuilding(12, 4, 8, 0xa29bfe, 20, 15)); // Store
+  // District buildings
+  group.add(createGroceryStore(-20, -15));
+  group.add(createSchool(20, -15));
+  group.add(createChurch(-20, 15));
+  group.add(createShop(20, 15));
+  group.add(createConstructionSite(-8, -8));
+  group.add(createAlleyBuilding(8, -25));
+  group.add(createTunnelEntrance(15, -30));
 
-  // Construction site
-  group.add(createBox(6, 3, 6, 0xffd93d, -8, 1.5, -8));
-  group.add(createBox(2, 8, 2, 0xff8fab, -10, 4, -6));
+  // Central monument
+  group.add(createMonumentPlatform());
 
-  // Central monument / Dream Machine platform
-  const machinePlatform = createBox(8, 1, 8, 0xffd93d, 0, 0.5, 0);
-  group.add(machinePlatform);
-  group.add(createBox(3, 6, 3, ACCENT_COLOR, 0, 3.5, 0));
-
-  // Park area
-  for (let i = 0; i < 5; i++) {
-    const tree = createBox(1, 3 + Math.random() * 2, 1, 0x2d6a4f, -5 + i * 3, 1.5, 20);
-    group.add(tree);
+  // Park
+  for (let i = 0; i < 6; i++) {
+    group.add(createParkTree(-5 + i * 2.5, 20 + (i % 2) * 2, 3 + (i % 3) * 0.5));
   }
 
-  // Rooftop access ramp
-  const ramp = createBox(6, 0.5, 4, 0xa29bfe, -25, 0.5, 5);
-  ramp.rotation.x = -0.3;
+  // Street lamps along main street
+  for (let z = -30; z <= 30; z += 15) {
+    group.add(createStreetLamp(5.5, z));
+    group.add(createStreetLamp(-5.5, z + 7));
+  }
+
+  // Ramp to rooftop area
+  const ramp = new THREE.Mesh(
+    new THREE.BoxGeometry(6, 0.2, 5),
+    new THREE.MeshStandardMaterial({ color: 0xa29bfe, roughness: 0.85 }),
+  );
+  ramp.position.set(-25, 0.4, 5);
+  ramp.rotation.x = -0.28;
+  ramp.receiveShadow = true;
+  ramp.castShadow = true;
   group.add(ramp);
 
-  // Alley
-  group.add(createBox(2, 4, 12, 0x5a4a7a, 8, 2, -25));
-
-  // Underground tunnel entrance (visual)
-  group.add(createBox(4, 3, 4, 0x3d3560, 15, 1.5, -30));
-
-  const ambient = new THREE.AmbientLight(0x404060, 0.6);
+  const ambient = new THREE.AmbientLight(0x404060, 0.55);
   group.add(ambient);
   lights.push(ambient);
 
-  const sun = new THREE.DirectionalLight(0xfff5e6, 1.2);
+  const sun = new THREE.DirectionalLight(0xfff5e6, 1.15);
   sun.position.set(15, 25, 10);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 0.5;
   sun.shadow.camera.far = 100;
   sun.shadow.camera.left = -45;
@@ -99,12 +117,12 @@ export function buildDreamCity(): DreamCityResult {
   group.add(sun);
   lights.push(sun);
 
-  const fill = new THREE.PointLight(0x9b59b6, 0.5, 50);
+  const fill = new THREE.PointLight(0x9b59b6, 0.45, 50);
   fill.position.set(-10, 8, -10);
   group.add(fill);
   lights.push(fill);
 
-  const dreamMachinePos = new THREE.Vector3(0, 1.8, 4);
+  const dreamMachinePos = new THREE.Vector3(0, PLAYER_EYE_HEIGHT, 4);
 
   const fragmentSpawnPoints = [
     new THREE.Vector3(-20, 1, -10),
@@ -123,7 +141,7 @@ export function buildDreamCity(): DreamCityResult {
 
   return {
     group,
-    spawnPoint: new THREE.Vector3(0, 1.8, 20),
+    spawnPoint: new THREE.Vector3(0, PLAYER_EYE_HEIGHT, 20),
     dreamMachinePos,
     bounds: {
       min: new THREE.Vector3(-38, 0, -38),
@@ -140,18 +158,28 @@ export function getSkyColor(): number {
 
 export function createDreamMachineMesh(): THREE.Group {
   const g = new THREE.Group();
+
   const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(2, 2.5, 1.5, 8),
-    new THREE.MeshStandardMaterial({ color: 0x6c5ce7, emissive: 0x6c5ce7, emissiveIntensity: 0.3 }),
+    new THREE.CylinderGeometry(2, 2.5, 1.5, 12),
+    new THREE.MeshStandardMaterial({ color: 0x6c5ce7, emissive: 0x6c5ce7, emissiveIntensity: 0.35, roughness: 0.6 }),
   );
   base.position.y = 0.75;
+  base.castShadow = true;
   g.add(base);
 
-  const core = new THREE.Mesh(
-    new THREE.SphereGeometry(0.8, 12, 12),
-    new THREE.MeshStandardMaterial({ color: 0xffeaa7, emissive: 0xffeaa7, emissiveIntensity: 0.8 }),
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1.6, 0.12, 8, 24),
+    new THREE.MeshStandardMaterial({ color: 0xff6b9d, emissive: 0xff6b9d, emissiveIntensity: 0.4 }),
   );
-  core.position.y = 2;
+  ring.position.y = 1.6;
+  ring.rotation.x = Math.PI / 2;
+  g.add(ring);
+
+  const core = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.75, 0),
+    new THREE.MeshStandardMaterial({ color: 0xffeaa7, emissive: 0xffeaa7, emissiveIntensity: 0.9, metalness: 0.2 }),
+  );
+  core.position.y = 2.1;
   g.add(core);
 
   g.userData.isDreamMachine = true;
@@ -165,7 +193,8 @@ export function createFragmentMesh(): THREE.Mesh {
       color: 0xffeaa7,
       emissive: 0xff6b9d,
       emissiveIntensity: 0.5,
-      metalness: 0.3,
+      metalness: 0.35,
+      roughness: 0.3,
     }),
   );
   mesh.castShadow = true;
@@ -175,56 +204,38 @@ export function createFragmentMesh(): THREE.Mesh {
 export function createBackroomsDoorMesh(): THREE.Group {
   const g = new THREE.Group();
   const frame = new THREE.Mesh(
-    new THREE.BoxGeometry(2, 3, 0.2),
-    new THREE.MeshStandardMaterial({ color: 0x3d3560 }),
+    new THREE.BoxGeometry(2.2, 3.2, 0.25),
+    new THREE.MeshStandardMaterial({ color: 0x3d3560, roughness: 0.9 }),
   );
-  frame.position.y = 1.5;
+  frame.position.y = 1.6;
   g.add(frame);
 
   const portal = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.5, 2.5),
+    new THREE.PlaneGeometry(1.6, 2.8),
     new THREE.MeshStandardMaterial({
       color: 0xc9b458,
       emissive: 0xc9b458,
-      emissiveIntensity: 0.6,
+      emissiveIntensity: 0.65,
       side: THREE.DoubleSide,
     }),
   );
-  portal.position.set(0, 1.5, 0.15);
+  portal.position.set(0, 1.6, 0.18);
   g.add(portal);
+
+  const knob = new THREE.Mesh(
+    new THREE.SphereGeometry(0.08, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xffeaa7, emissive: 0xffeaa7, emissiveIntensity: 0.5 }),
+  );
+  knob.position.set(0.6, 1.2, 0.25);
+  g.add(knob);
+
   g.userData.isBackroomsDoor = true;
   return g;
 }
 
 export function createRemotePlayerMesh(name: string, color: number): THREE.Group {
-  const g = new THREE.Group();
-
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.4, 1, 4, 8),
-    new THREE.MeshStandardMaterial({ color }),
-  );
-  body.position.y = 0.9;
-  g.add(body);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillRect(0, 0, 256, 64);
-  ctx.fillStyle = '#ffeaa7';
-  ctx.font = 'bold 28px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(name, 128, 42);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: texture, transparent: true }),
-  );
-  sprite.position.y = 2.2;
-  sprite.scale.set(2, 0.5, 1);
-  g.add(sprite);
-
+  const g = createHumanCharacter(color);
+  g.add(createPlayerNameTag(name));
   return g;
 }
 
@@ -232,3 +243,5 @@ export const PLAYER_COLORS = [
   0xff6b9d, 0x6bcb77, 0x74b9ff, 0xffd93d,
   0xa29bfe, 0xe17055, 0xff8fab, 0x00cec9,
 ];
+
+export { PLAYER_EYE_HEIGHT };

@@ -14,7 +14,7 @@ const DEFAULT_CONFIG: ControlsConfig = {
   sprintMultiplier: 1.6,
   jumpForce: 9,
   gravity: 24,
-  playerHeight: 1.8,
+  playerHeight: 1.65,
   groundY: 0,
 };
 
@@ -34,7 +34,9 @@ export class FirstPersonControls {
   private playerScale = 1;
   private interactPressed = false;
   private throwPressed = false;
+  private shootPressed = false;
   private abilityPressed = false;
+  private movementLocked = false;
   private wakeUpPressed = false;
   private mouseDown = false;
 
@@ -56,7 +58,10 @@ export class FirstPersonControls {
   };
   private onMouseUp = (e: MouseEvent) => {
     if (e.button === 0) {
-      if (this.mouseDown) this.throwPressed = true;
+      if (this.mouseDown) {
+        this.throwPressed = true;
+        this.shootPressed = true;
+      }
       this.mouseDown = false;
     }
   };
@@ -110,6 +115,27 @@ export class FirstPersonControls {
     return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)).normalize();
   }
 
+  getPitch(): number {
+    return this.pitch;
+  }
+
+  getAimDirection(): THREE.Vector3 {
+    const cosPitch = Math.cos(this.pitch);
+    return new THREE.Vector3(
+      -Math.sin(this.yaw) * cosPitch,
+      Math.sin(this.pitch),
+      -Math.cos(this.yaw) * cosPitch,
+    ).normalize();
+  }
+
+  setMovementLocked(locked: boolean): void {
+    this.movementLocked = locked;
+  }
+
+  isMovementLocked(): boolean {
+    return this.movementLocked;
+  }
+
   setMoveSpeedMultiplier(m: number): void {
     this.moveSpeedMultiplier = m;
   }
@@ -120,7 +146,7 @@ export class FirstPersonControls {
 
   setPlayerScale(scale: number): void {
     this.playerScale = scale;
-    this.config.playerHeight = 1.8 * scale;
+    this.config.playerHeight = 1.65 * scale;
   }
 
   getPlayerScale(): number {
@@ -147,6 +173,14 @@ export class FirstPersonControls {
     return false;
   }
 
+  consumeShoot(): boolean {
+    if (this.shootPressed) {
+      this.shootPressed = false;
+      return true;
+    }
+    return false;
+  }
+
   consumeAbility(): boolean {
     if (this.abilityPressed) {
       this.abilityPressed = false;
@@ -165,6 +199,12 @@ export class FirstPersonControls {
 
   update(delta: number, bounds?: { min: THREE.Vector3; max: THREE.Vector3 }): void {
     if (!this.enabled) return;
+
+    this.camera.rotation.order = 'YXZ';
+    this.camera.rotation.y = this.yaw;
+    this.camera.rotation.x = this.pitch;
+
+    if (this.movementLocked) return;
 
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
@@ -203,9 +243,6 @@ export class FirstPersonControls {
       this.camera.position.z = THREE.MathUtils.clamp(this.camera.position.z, bounds.min.z, bounds.max.z);
     }
 
-    this.camera.rotation.order = 'YXZ';
-    this.camera.rotation.y = this.yaw;
-    this.camera.rotation.x = this.pitch;
   }
 
   consumeEscape(): boolean {

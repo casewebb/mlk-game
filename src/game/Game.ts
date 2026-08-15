@@ -214,6 +214,7 @@ export class Game {
       isHost: p.isHost,
       heldObjectId: null,
       scale: 1,
+      stunnedUntil: 0,
     }));
 
     assignRoles(sessionPlayers, this.gameSeed);
@@ -249,6 +250,7 @@ export class Game {
         isHost: info?.isHost ?? false,
         heldObjectId: null,
         scale: 1,
+        stunnedUntil: 0,
       };
     });
 

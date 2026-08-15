@@ -13,6 +13,7 @@ export interface PlayerSnapshot {
   rotationY: number;
   heldObjectId: string | null;
   scale: number;
+  stunRemaining: number;
 }
 
 export interface ObjectSnapshot {
@@ -51,7 +52,9 @@ export type NetworkMessage =
   | { type: 'EXIT_BACKROOMS'; playerId: string }
   | { type: 'HOST_DISCONNECTED' }
   | { type: 'PLAYER_LEFT'; playerId: string }
-  | { type: 'CHAT'; playerId: string; text: string };
+  | { type: 'CHAT'; playerId: string; text: string }
+  | { type: 'SHOOT'; playerId: string; rotationY: number; pitch: number }
+  | { type: 'SHOOT_FX'; origin: Vec3; hit: Vec3; hitPlayerId: string | null };
 
 export interface PlayerActions {
   sprint: boolean;

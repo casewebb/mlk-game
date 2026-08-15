@@ -16,17 +16,28 @@ export class GameHUD {
     localRole: PlayerRole | null,
     isNightmare: boolean,
     nightmareAbilityReady: boolean,
+    stunRemaining = 0,
   ): void {
     const mins = Math.floor(round.timeRemaining / 60);
     const secs = Math.floor(round.timeRemaining % 60);
     const timerClass = round.timeRemaining <= 30 ? 'timer-critical' : '';
     const roleHint = isNightmare
-      ? '<div class="role-badge nightmare">YOU ARE THE NIGHTMARE · Q = Ability</div>'
+      ? '<div class="role-badge nightmare">YOU ARE THE NIGHTMARE · Click shoot · Q = Ability</div>'
       : localRole === 'dreamer'
         ? '<div class="role-badge dreamer">DREAMER · Complete the objective!</div>'
         : '';
 
+    const crosshair = isNightmare && stunRemaining <= 0
+      ? '<div class="crosshair"></div>'
+      : '';
+
+    const stunOverlay = stunRemaining > 0
+      ? `<div class="stun-overlay"><h2>CAUGHT IN THE NIGHTMARE</h2><p>Out for ${Math.ceil(stunRemaining)}s</p></div>`
+      : '';
+
     this.overlay.innerHTML = `
+      ${crosshair}
+      ${stunOverlay}
       <div class="hud-top">
         <div class="hud-objective">
           <span class="hud-label">DREAM OBJECTIVE</span>
@@ -44,7 +55,7 @@ export class GameHUD {
       ${isNightmare ? `<div class="ability-hint${nightmareAbilityReady ? ' ready' : ''}">Q — Nightmare Ability${nightmareAbilityReady ? ' (READY)' : ''}</div>` : ''}
       ${round.activeEvent ? `<div class="event-banner">${round.eventMessage ?? round.activeEvent}</div>` : ''}
       <div class="hud-controls-bar">
-        WASD move · Mouse look · Shift sprint · Space jump · E interact · Click throw · R vote · Esc menu
+        ${isNightmare ? 'Click shoot · ' : 'Click throw · '}WASD move · Mouse look · Shift sprint · Space jump · E interact · R vote · Esc menu
       </div>
     `;
   }

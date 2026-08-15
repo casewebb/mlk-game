@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { PLAYER_EYE_HEIGHT } from '../client/rendering/CharacterModel.ts';
 
 export interface BackroomsResult {
   group: THREE.Group;
@@ -66,8 +67,8 @@ export function buildBackrooms(seed: number): BackroomsResult {
 
   return {
     group,
-    spawnPoint: new THREE.Vector3(0, 1.8, 0),
-    exitPoint: new THREE.Vector3(size / 2 - 2, 1.8, 0),
+    spawnPoint: new THREE.Vector3(0, PLAYER_EYE_HEIGHT, 0),
+    exitPoint: new THREE.Vector3(size / 2 - 2, PLAYER_EYE_HEIGHT, 0),
     bounds: {
       min: new THREE.Vector3(-size / 2 + 1, 0, -size / 2 + 1),
       max: new THREE.Vector3(size / 2 - 1, 5, size / 2 - 1),

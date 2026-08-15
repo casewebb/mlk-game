@@ -19,16 +19,21 @@ import {
   createFragmentMesh,
   createRemotePlayerMesh,
   PLAYER_COLORS,
+  PLAYER_EYE_HEIGHT,
   SKY_COLOR,
 } from '../maps/DreamCity.ts';
+import { createFirstPersonBody, eyeToFeet } from '../client/rendering/CharacterModel.ts';
 import { buildBackrooms, getBackroomsFogColor, updateBackroomsLights } from '../maps/Backrooms.ts';
 import {
   createRoundSnapshot,
   INTRO_DURATION,
   ROUND_DURATION,
+  SHOOT_COOLDOWN,
+  STUN_DURATION,
   type RoundEndInfo,
   type SessionPlayer,
 } from './RoundState.ts';
+import { aimToDirection, hitscan, normalizeDirection } from './Combat.ts';
 
 export interface GameSessionConfig {
   localPlayerId: string;
@@ -83,11 +88,18 @@ export class GameSession {
   private winner: 'dreamers' | 'nightmare' | null = null;
   private voting = false;
   private elapsed = 0;
+  private lastShootTime = 0;
+  private localStunRemaining = 0;
+  private firstPersonBody: THREE.Group | null = null;
 
   constructor(canvas: HTMLCanvasElement, config: GameSessionConfig) {
     this.config = config;
     this.sceneManager = new SceneManager(canvas);
     this.controls = new FirstPersonControls(this.sceneManager.camera);
+    const colorIdx = [...this.players.keys()].indexOf(config.localPlayerId);
+    const shirtColor = PLAYER_COLORS[Math.max(0, colorIdx) % PLAYER_COLORS.length]!;
+    this.firstPersonBody = createFirstPersonBody(shirtColor);
+    this.sceneManager.camera.add(this.firstPersonBody);
     this.hud = new GameHUD();
     this.audio = new AudioManager();
     this.physics = new PhysicsWorld();
@@ -96,7 +108,7 @@ export class GameSession {
     this.nightmareAbilities = createNightmareAbilities();
 
     for (const p of config.players) {
-      this.players.set(p.id, { ...p });
+      this.players.set(p.id, { ...p, stunnedUntil: p.stunnedUntil ?? 0 });
     }
 
     const local = this.players.get(config.localPlayerId);
@@ -156,9 +168,23 @@ export class GameSession {
     if (this.remoteMeshes.has(id)) return;
     const idx = this.remoteMeshes.size % PLAYER_COLORS.length;
     const mesh = createRemotePlayerMesh(name, PLAYER_COLORS[idx]!);
-    mesh.position.copy(this.spawnPoint);
+    const feet = eyeToFeet(this.spawnPoint);
+    mesh.position.copy(feet);
     this.sceneManager.scene.add(mesh);
     this.remoteMeshes.set(id, mesh);
+  }
+
+  private setRemoteFeetPosition(id: string, eye: { x: number; y: number; z: number }): void {
+    const mesh = this.remoteMeshes.get(id);
+    if (!mesh) return;
+    const feet = eyeToFeet(eye);
+    mesh.position.set(feet.x, feet.y, feet.z);
+  }
+
+  private getRemoteEyePosition(id: string): { x: number; y: number; z: number } {
+    const mesh = this.remoteMeshes.get(id);
+    if (!mesh) return { x: 0, y: PLAYER_EYE_HEIGHT, z: 0 };
+    return { x: mesh.position.x, y: mesh.position.y + PLAYER_EYE_HEIGHT, z: mesh.position.z };
   }
 
   private setupNetworking(): void {
@@ -212,10 +238,25 @@ export class GameSession {
         case 'PLAYER_INPUT':
           if (this.config.isHost) {
             const mesh = this.remoteMeshes.get(msg.playerId);
-            if (mesh) {
-              mesh.position.set(msg.position.x, msg.position.y, msg.position.z);
+            const player = this.players.get(msg.playerId);
+            if (mesh && player && this.getStunRemaining(player) <= 0) {
+              this.setRemoteFeetPosition(msg.playerId, msg.position);
               mesh.rotation.y = msg.rotationY;
             }
+          }
+          break;
+
+        case 'SHOOT':
+          if (this.config.isHost) this.handleShoot(msg.playerId, msg.rotationY, msg.pitch);
+          break;
+
+        case 'SHOOT_FX':
+          this.showShootTracer(msg.origin, msg.hit);
+          if (msg.hitPlayerId === this.config.localPlayerId) {
+            this.audio.playHit();
+            this.audio.playStunned();
+          } else if (msg.hitPlayerId) {
+            this.audio.playHit();
           }
           break;
       }
@@ -265,7 +306,12 @@ export class GameSession {
 
     this.updateHeldObject();
     this.updateRemoteInterpolation(delta);
-    this.handleLocalInput();
+    this.updateStunStates(delta);
+    this.updateRemoteVisibility();
+
+    if (this.localStunRemaining <= 0) {
+      this.handleLocalInput();
+    }
 
     if (this.inBackrooms && this.backroomsGroup) {
       updateBackroomsLights(this.backroomsGroup, this.elapsed);
@@ -276,7 +322,36 @@ export class GameSession {
       this.localRole,
       this.localRole === 'nightmare',
       this.nightmareAbilities.some((a) => a.canUse(this, this.config.localPlayerId)),
+      this.localStunRemaining,
     );
+  }
+
+  private getStunRemaining(player: SessionPlayer): number {
+    return Math.max(0, player.stunnedUntil - this.elapsed);
+  }
+
+  private updateStunStates(delta: number): void {
+    if (this.config.isHost) {
+      for (const player of this.players.values()) {
+        if (player.stunnedUntil > 0 && this.getStunRemaining(player) <= 0) {
+          player.stunnedUntil = 0;
+        }
+      }
+      const local = this.players.get(this.config.localPlayerId);
+      this.localStunRemaining = local ? this.getStunRemaining(local) : 0;
+    } else if (this.localStunRemaining > 0) {
+      this.localStunRemaining = Math.max(0, this.localStunRemaining - delta);
+    }
+
+    this.controls.setMovementLocked(this.localStunRemaining > 0);
+  }
+
+  private updateRemoteVisibility(): void {
+    for (const [id, mesh] of this.remoteMeshes) {
+      const player = this.players.get(id);
+      const stunned = player ? this.getStunRemaining(player) > 0 : false;
+      mesh.visible = !stunned;
+    }
   }
 
   private runHostLogic(delta: number): void {
@@ -304,11 +379,20 @@ export class GameSession {
   }
 
   private handleLocalInput(): void {
+    if (this.localRole === 'nightmare') {
+      if (this.controls.consumeShoot()) {
+        if (this.heldObjectId) {
+          this.tryThrow();
+        } else {
+          this.tryShoot();
+        }
+      }
+    } else if (this.controls.consumeThrow()) {
+      this.tryThrow();
+    }
+
     if (this.controls.consumeInteract()) {
       this.tryInteract();
-    }
-    if (this.controls.consumeThrow()) {
-      this.tryThrow();
     }
     if (this.controls.consumeAbility() && this.localRole === 'nightmare') {
       this.tryAbility();
@@ -317,7 +401,125 @@ export class GameSession {
       this.config.network.send({ type: 'WAKE_UP', playerId: this.config.localPlayerId });
       if (this.config.isHost) this.startVote();
     }
+  }
 
+  private tryShoot(): void {
+    if (this.localRole !== 'nightmare') return;
+    if (this.localStunRemaining > 0) return;
+    if (this.elapsed - this.lastShootTime < SHOOT_COOLDOWN) return;
+
+    this.lastShootTime = this.elapsed;
+    const rotationY = this.controls.getRotationY();
+    const pitch = this.controls.getPitch();
+
+    this.config.network.send({
+      type: 'SHOOT',
+      playerId: this.config.localPlayerId,
+      rotationY,
+      pitch,
+    });
+
+    if (this.config.isHost) {
+      this.handleShoot(this.config.localPlayerId, rotationY, pitch);
+    } else {
+      this.audio.playShoot();
+    }
+  }
+
+  private handleShoot(shooterId: string, rotationY: number, pitch: number): void {
+    const shooter = this.players.get(shooterId);
+    if (!shooter || shooter.role !== 'nightmare') return;
+    if (this.getStunRemaining(shooter) > 0) return;
+
+    const origin = this.getPlayerPosition(shooterId);
+    const direction = normalizeDirection(aimToDirection(rotationY, pitch));
+
+    const targets = [...this.players.values()]
+      .filter((p) => this.getStunRemaining(p) <= 0)
+      .map((p) => ({
+        id: p.id,
+        position: this.getPlayerPosition(p.id),
+        scale: p.scale,
+      }));
+
+    const hit = hitscan(origin, direction, shooterId, targets);
+    const hitPoint = hit
+      ? hit.hitPoint
+      : {
+          x: origin.x + direction.x * 45,
+          y: origin.y + direction.y * 45,
+          z: origin.z + direction.z * 45,
+        };
+
+    this.config.network.broadcast({
+      type: 'SHOOT_FX',
+      origin,
+      hit: hitPoint,
+      hitPlayerId: hit?.playerId ?? null,
+    });
+
+    if (shooterId === this.config.localPlayerId) {
+      this.audio.playShoot();
+    }
+
+    this.showShootTracer(origin, hitPoint);
+
+    if (hit) {
+      this.stunPlayer(hit.playerId);
+      if (hit.playerId === this.config.localPlayerId) {
+        this.audio.playStunned();
+      }
+    }
+
+    this.broadcastState();
+  }
+
+  private stunPlayer(playerId: string): void {
+    const player = this.players.get(playerId);
+    if (!player || player.role === 'nightmare') return;
+
+    player.stunnedUntil = this.elapsed + STUN_DURATION;
+
+    const held = player.heldObjectId ?? this.getHeldFragmentId(playerId);
+    if (held) {
+      this.handleInteract(playerId, 'drop', held);
+    }
+
+    if (playerId === this.config.localPlayerId) {
+      this.audio.playHit();
+      this.audio.playStunned();
+    } else {
+      this.audio.playHit();
+    }
+
+    const victim = this.players.get(playerId);
+    if (victim) {
+      this.hud.showAnnouncement(`${victim.name} was taken out!`, 2000);
+    }
+  }
+
+  private getPlayerPosition(playerId: string): { x: number; y: number; z: number } {
+    if (playerId === this.config.localPlayerId) {
+      const p = this.controls.getPosition();
+      return { x: p.x, y: p.y, z: p.z };
+    }
+    return this.getRemoteEyePosition(playerId);
+  }
+
+  private showShootTracer(origin: { x: number; y: number; z: number }, hit: { x: number; y: number; z: number }): void {
+    const points = [
+      new THREE.Vector3(origin.x, origin.y, origin.z),
+      new THREE.Vector3(hit.x, hit.y, hit.z),
+    ];
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: 0xff6b9d, transparent: true, opacity: 0.9 });
+    const line = new THREE.Line(geo, mat);
+    this.sceneManager.scene.add(line);
+    setTimeout(() => {
+      this.sceneManager.scene.remove(line);
+      geo.dispose();
+      mat.dispose();
+    }, 80);
   }
 
   private tryInteract(): void {
@@ -596,6 +798,7 @@ export class GameSession {
   }
 
   private sendInput(): void {
+    if (this.localStunRemaining > 0) return;
     const pos = this.controls.getPosition();
     this.config.network.send({
       type: 'PLAYER_INPUT',
@@ -614,18 +817,30 @@ export class GameSession {
 
   private applyGameState(msg: Extract<NetworkMessage, { type: 'GAME_STATE' }>): void {
     for (const snap of msg.players) {
-      if (snap.id === this.config.localPlayerId) continue;
+      const player = this.players.get(snap.id);
+      if (player) {
+        player.stunnedUntil = snap.stunRemaining > 0 ? this.elapsed + snap.stunRemaining : 0;
+      }
+
+      if (snap.id === this.config.localPlayerId) {
+        this.localStunRemaining = snap.stunRemaining;
+        this.controls.setMovementLocked(snap.stunRemaining > 0);
+        continue;
+      }
 
       if (!this.remoteMeshes.has(snap.id)) {
-        const player = this.players.get(snap.id);
-        if (player) this.createRemotePlayer(snap.id, player.name);
+        const p = this.players.get(snap.id);
+        if (p) this.createRemotePlayer(snap.id, p.name);
       }
 
       const mesh = this.remoteMeshes.get(snap.id);
       if (mesh) {
-        mesh.position.set(snap.position.x, snap.position.y, snap.position.z);
-        mesh.rotation.y = snap.rotationY;
-        mesh.scale.setScalar(snap.scale);
+        mesh.visible = snap.stunRemaining <= 0;
+        if (snap.stunRemaining <= 0) {
+          this.setRemoteFeetPosition(snap.id, snap.position);
+          mesh.rotation.y = snap.rotationY;
+          mesh.scale.setScalar(snap.scale);
+        }
       }
     }
 
@@ -678,11 +893,8 @@ export class GameSession {
         rotY = this.controls.getRotationY();
         scale = this.controls.getPlayerScale();
       } else {
-        const mesh = this.remoteMeshes.get(id);
-        pos = mesh
-          ? { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z }
-          : { x: 0, y: 1.8, z: 0 };
-        rotY = mesh?.rotation.y ?? 0;
+        pos = this.getRemoteEyePosition(id);
+        rotY = this.remoteMeshes.get(id)?.rotation.y ?? 0;
       }
 
       snaps.push({
@@ -692,6 +904,7 @@ export class GameSession {
         rotationY: rotY,
         heldObjectId: player.heldObjectId,
         scale,
+        stunRemaining: this.getStunRemaining(player),
       });
     }
     return snaps;
@@ -761,8 +974,7 @@ export class GameSession {
         if (playerId === this.config.localPlayerId) {
           this.controls.setPosition(pos.x, pos.y, pos.z);
         } else {
-          const mesh = this.remoteMeshes.get(playerId);
-          if (mesh) mesh.position.set(pos.x, pos.y, pos.z);
+          this.setRemoteFeetPosition(playerId, pos);
         }
       },
       localPlayerId: this.config.localPlayerId,
@@ -790,14 +1002,13 @@ export class GameSession {
       this.sceneManager.scene.fog = new THREE.Fog(getBackroomsFogColor(), 5, 25);
     }
 
-    const pos = { x: 0, y: 1.8, z: 0 };
+    const pos = { x: 0, y: PLAYER_EYE_HEIGHT, z: 0 };
     if (playerId === this.config.localPlayerId) {
       this.inBackrooms = true;
       this.controls.setPosition(pos.x, pos.y, pos.z);
       this.bounds = { min: new THREE.Vector3(-18, 0, -18), max: new THREE.Vector3(18, 5, 18) };
     } else {
-      const mesh = this.remoteMeshes.get(playerId);
-      mesh?.position.set(pos.x, pos.y, pos.z);
+      this.setRemoteFeetPosition(playerId, pos);
     }
   }
 
@@ -812,8 +1023,7 @@ export class GameSession {
       this.sceneManager.scene.fog = new THREE.Fog(SKY_COLOR, 20, 55);
       this.bounds = { min: new THREE.Vector3(-38, 0, -38), max: new THREE.Vector3(38, 20, 38) };
     } else {
-      const mesh = this.remoteMeshes.get(playerId);
-      mesh?.position.set(pos.x, pos.y, pos.z);
+      this.setRemoteFeetPosition(playerId, pos);
     }
   }
 

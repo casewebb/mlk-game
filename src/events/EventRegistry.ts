@@ -1,4 +1,5 @@
 import type { DreamEvent, EventContext } from './DreamEvent.ts';
+import { PLAYER_EYE_HEIGHT } from '../client/rendering/CharacterModel.ts';
 
 export class LowGravityEvent implements DreamEvent {
   id = 'low_gravity';
@@ -97,11 +98,11 @@ export class RandomTeleportEvent implements DreamEvent {
   duration = 5;
 
   private positions = [
-    { x: -15, y: 1.8, z: -10 },
-    { x: 15, y: 1.8, z: 10 },
-    { x: 0, y: 1.8, z: -20 },
-    { x: -10, y: 1.8, z: 18 },
-    { x: 20, y: 1.8, z: -5 },
+    { x: -15, y: PLAYER_EYE_HEIGHT, z: -10 },
+    { x: 15, y: PLAYER_EYE_HEIGHT, z: 10 },
+    { x: 0, y: PLAYER_EYE_HEIGHT, z: -20 },
+    { x: -10, y: PLAYER_EYE_HEIGHT, z: 18 },
+    { x: 20, y: PLAYER_EYE_HEIGHT, z: -5 },
   ];
 
   start(ctx: EventContext): void {

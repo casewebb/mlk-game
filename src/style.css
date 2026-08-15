@@ -595,3 +595,59 @@ input[type='text']:focus {
   font-size: 0.85rem;
   margin: 0.5rem 0;
 }
+
+.crosshair {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.crosshair::before,
+.crosshair::after {
+  content: '';
+  position: absolute;
+  background: rgba(255, 107, 157, 0.85);
+}
+
+.crosshair::before {
+  width: 2px;
+  height: 20px;
+  left: 9px;
+  top: 0;
+}
+
+.crosshair::after {
+  width: 20px;
+  height: 2px;
+  left: 0;
+  top: 9px;
+}
+
+.stun-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 0, 10, 0.75);
+  pointer-events: none;
+  z-index: 25;
+}
+
+.stun-overlay h2 {
+  font-size: clamp(1.2rem, 4vw, 2rem);
+  color: #ff6b9d;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.5rem;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.stun-overlay p {
+  font-size: 1.25rem;
+  color: #ffeaa7;
+}

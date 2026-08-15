@@ -11,7 +11,7 @@ export interface SessionPlayer {
   stunnedUntil: number;
 }
 
-export const STUN_DURATION = 30;
+export const STUN_DURATION = 5;
 export const SHOOT_RANGE = 45;
 export const SHOOT_COOLDOWN = 0.55;
 

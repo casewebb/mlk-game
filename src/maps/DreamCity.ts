@@ -122,7 +122,7 @@ export function buildDreamCity(): DreamCityResult {
   group.add(fill);
   lights.push(fill);
 
-  const dreamMachinePos = new THREE.Vector3(0, PLAYER_EYE_HEIGHT, 4);
+  const dreamMachinePos = new THREE.Vector3(0, 0, 3.5);
 
   const fragmentSpawnPoints = [
     new THREE.Vector3(-20, 1, -10),

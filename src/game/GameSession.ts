@@ -309,8 +309,17 @@ export class GameSession {
     this.updateStunStates(delta);
     this.updateRemoteVisibility();
 
+    if (this.firstPersonBody) {
+      this.firstPersonBody.visible = this.localStunRemaining <= 0;
+    }
+
     if (this.localStunRemaining <= 0) {
       this.handleLocalInput();
+    } else {
+      // Stunned: discard any pending action inputs
+      this.controls.consumeShoot();
+      this.controls.consumeThrow();
+      this.controls.consumeInteract();
     }
 
     if (this.inBackrooms && this.backroomsGroup) {
@@ -342,8 +351,6 @@ export class GameSession {
     } else if (this.localStunRemaining > 0) {
       this.localStunRemaining = Math.max(0, this.localStunRemaining - delta);
     }
-
-    this.controls.setMovementLocked(this.localStunRemaining > 0);
   }
 
   private updateRemoteVisibility(): void {
@@ -379,16 +386,12 @@ export class GameSession {
   }
 
   private handleLocalInput(): void {
-    if (this.localRole === 'nightmare') {
-      if (this.controls.consumeShoot()) {
-        if (this.heldObjectId) {
-          this.tryThrow();
-        } else {
-          this.tryShoot();
-        }
+    if (this.controls.consumeShoot()) {
+      if (this.heldObjectId) {
+        this.tryThrow();
+      } else {
+        this.tryShoot();
       }
-    } else if (this.controls.consumeThrow()) {
-      this.tryThrow();
     }
 
     if (this.controls.consumeInteract()) {
@@ -404,7 +407,6 @@ export class GameSession {
   }
 
   private tryShoot(): void {
-    if (this.localRole !== 'nightmare') return;
     if (this.localStunRemaining > 0) return;
     if (this.elapsed - this.lastShootTime < SHOOT_COOLDOWN) return;
 
@@ -428,7 +430,7 @@ export class GameSession {
 
   private handleShoot(shooterId: string, rotationY: number, pitch: number): void {
     const shooter = this.players.get(shooterId);
-    if (!shooter || shooter.role !== 'nightmare') return;
+    if (!shooter) return;
     if (this.getStunRemaining(shooter) > 0) return;
 
     const origin = this.getPlayerPosition(shooterId);
@@ -476,7 +478,7 @@ export class GameSession {
 
   private stunPlayer(playerId: string): void {
     const player = this.players.get(playerId);
-    if (!player || player.role === 'nightmare') return;
+    if (!player) return;
 
     player.stunnedUntil = this.elapsed + STUN_DURATION;
 
@@ -535,18 +537,19 @@ export class GameSession {
       return;
     }
 
-    if (this.heldObjectId) {
-      this.sendInteract('drop', this.heldObjectId);
-      if (this.config.isHost) this.handleInteract(this.config.localPlayerId, 'drop', this.heldObjectId);
-      return;
-    }
-
-    if (this.dreamMachine && this.isNearObject(this.dreamMachine.position, 3)) {
-      const held = this.getHeldFragmentId(this.config.localPlayerId);
+    // Deposit takes priority over drop when near the Dream Machine
+    if (this.dreamMachine && this.isNearDreamMachine(6)) {
+      const held = this.heldObjectId ?? this.getHeldFragmentId(this.config.localPlayerId);
       if (held) {
         this.sendInteract('deposit', held, 'dream-machine');
         if (this.config.isHost) this.handleInteract(this.config.localPlayerId, 'deposit', held, 'dream-machine');
+        return;
       }
+    }
+
+    if (this.heldObjectId) {
+      this.sendInteract('drop', this.heldObjectId);
+      if (this.config.isHost) this.handleInteract(this.config.localPlayerId, 'drop', this.heldObjectId);
       return;
     }
 
@@ -558,6 +561,7 @@ export class GameSession {
   }
 
   private tryThrow(): void {
+    if (this.localStunRemaining > 0) return;
     if (!this.heldObjectId) return;
     this.sendInteract('throw', this.heldObjectId);
     if (this.config.isHost) {
@@ -798,7 +802,6 @@ export class GameSession {
   }
 
   private sendInput(): void {
-    if (this.localStunRemaining > 0) return;
     const pos = this.controls.getPosition();
     this.config.network.send({
       type: 'PLAYER_INPUT',
@@ -824,7 +827,6 @@ export class GameSession {
 
       if (snap.id === this.config.localPlayerId) {
         this.localStunRemaining = snap.stunRemaining;
-        this.controls.setMovementLocked(snap.stunRemaining > 0);
         continue;
       }
 
@@ -1028,7 +1030,7 @@ export class GameSession {
   }
 
   private updateHeldObject(): void {
-    if (!this.heldObjectId) return;
+    if (this.localStunRemaining > 0 || !this.heldObjectId) return;
     const body = this.physics.getBody(this.heldObjectId);
     if (!body) return;
 
@@ -1068,6 +1070,15 @@ export class GameSession {
       if (frag.holderId === playerId) return id;
     }
     return null;
+  }
+
+  private isNearDreamMachine(range: number): boolean {
+    if (!this.dreamMachine) return false;
+    const p = this.controls.getPosition();
+    const m = this.dreamMachine.position;
+    const dx = p.x - m.x;
+    const dz = p.z - m.z;
+    return dx * dx + dz * dz <= range * range;
   }
 
   private isNearObject(objPos: THREE.Vector3, range: number): boolean {

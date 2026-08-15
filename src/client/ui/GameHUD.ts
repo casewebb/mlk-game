@@ -22,17 +22,17 @@ export class GameHUD {
     const secs = Math.floor(round.timeRemaining % 60);
     const timerClass = round.timeRemaining <= 30 ? 'timer-critical' : '';
     const roleHint = isNightmare
-      ? '<div class="role-badge nightmare">YOU ARE THE NIGHTMARE · Click shoot · Q = Ability</div>'
+      ? '<div class="role-badge nightmare">YOU ARE THE NIGHTMARE · Q = Ability</div>'
       : localRole === 'dreamer'
         ? '<div class="role-badge dreamer">DREAMER · Complete the objective!</div>'
         : '';
 
-    const crosshair = isNightmare && stunRemaining <= 0
+    const crosshair = stunRemaining <= 0
       ? '<div class="crosshair"></div>'
       : '';
 
     const stunOverlay = stunRemaining > 0
-      ? `<div class="stun-overlay"><h2>CAUGHT IN THE NIGHTMARE</h2><p>Out for ${Math.ceil(stunRemaining)}s</p></div>`
+      ? `<div class="stun-overlay"><h2>YOU ARE OUT</h2><p>Invisible ghost mode · ${Math.ceil(stunRemaining)}s</p><span class="stun-hint">You can move but cannot shoot or interact</span></div>`
       : '';
 
     this.overlay.innerHTML = `
@@ -55,7 +55,7 @@ export class GameHUD {
       ${isNightmare ? `<div class="ability-hint${nightmareAbilityReady ? ' ready' : ''}">Q — Nightmare Ability${nightmareAbilityReady ? ' (READY)' : ''}</div>` : ''}
       ${round.activeEvent ? `<div class="event-banner">${round.eventMessage ?? round.activeEvent}</div>` : ''}
       <div class="hud-controls-bar">
-        ${isNightmare ? 'Click shoot · ' : 'Click throw · '}WASD move · Mouse look · Shift sprint · Space jump · E interact · R vote · Esc menu
+        Click shoot · E interact / deposit · WASD move · Shift sprint · Space jump · R vote · Esc menu
       </div>
     `;
   }

@@ -651,3 +651,11 @@ input[type='text']:focus {
   font-size: 1.25rem;
   color: #ffeaa7;
 }
+
+.stun-hint {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: rgba(200, 184, 232, 0.7);
+  letter-spacing: 0.04em;
+}
